@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <html lang="en">
 <head>
 	<meta charset="utf-8">
-	<title>russellthackston.me</title>
+	<title>My Jamz</title>
 	<meta name="description" content="Russell Thackston's personal website for IT 5233">
 	<meta name="author" content="Russell Thackston">
 	<link rel="stylesheet" href="css/style.css">
@@ -64,10 +64,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 <!--1. Display Errors if any exists 
 	2. If no errors display things -->
-<body>
+<body OnLoad="otpFunction()">
 	<?php include 'include/header.php'; ?>
-	<h2>My Things</h2>
-	
+	<h2>My Jamz</h2>
+	<script>
+		//function otpFunction(){
+		//	var otp = prompt("Please enter your one time password.");
+	//	}
+	</script>
 	<?php include('include/messages.php'); ?>
 	
 	<div class="search">
@@ -79,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 	</div>
 	<ul class="things">
 		<?php if (sizeof($things) == 0) { ?>
-		<li>No things found</li>
+		<li>No Jamz found</li>
 		<?php } ?>
 		<?php foreach ($things as $thing) { ?>
 		<li>
@@ -96,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 			<label for="attachment">Add an image, PDF, etc.</label>
 			<input id="attachment" name="attachment" type="file">
 			<br/>
-			<input type="submit" name="start" value="Create Thing" />
+			<input type="submit" name="start" value="Create Some Jamz" />
 			<input type="submit" name="cancel" value="Cancel" />
 		</form>
 	</div>

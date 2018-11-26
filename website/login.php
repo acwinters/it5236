@@ -59,8 +59,8 @@ if (isset($_GET['register']) && $_GET['register']== 'success') {
 <html lang="en">
 <head>
 	<meta charset="utf-8">
-	<title>russellthackston.me</title>
-	<meta name="description" content="Russell Thackston's personal website for IT 5233">
+	<title>Jamz4U</title>
+	<meta name="description" content="Jamz4U">
 	<meta name="author" content="Russell Thackston">
 	<link rel="stylesheet" href="css/style.css">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -77,16 +77,32 @@ if (isset($_GET['register']) && $_GET['register']== 'success') {
 	<?php include('include/messages.php'); ?>
 	
 	<div>
-		<form method="post" action="login.php">
+		<form method="post" action="login.php" id="usernameForm">
 			
-			<input type="text" name="username" id="username" placeholder="Username" value="<?php echo $username; ?>" />
+			<input type="text" name="username" id="usernameField" placeholder="Username" value="<?php echo $username; ?>" />
 			<br/>
 
 			<input type="password" name="password" id="password" placeholder="Password" value="<?php echo $password; ?>" />
 			<br/>
-
-			<input type="submit" value="Login" name="login" />
+			
+			<input type="submit" value="Login" name="login" /> <br>
+			
+			<input type="radio" name="usersession" id="saveLocal" value=""> Save username locally<br>
+			<br/>
+			<input type="radio" name="usersession" id ="saveSession" value=""> Save session <br>
+			<br/>
+			<input type="radio" name="usersession" id="noSave" value=""> Do not save username <br>
+			
+			
 		</form>
+	<!--	<form id="usernameForm">
+			<input type="radio" name="username" id="saveLocal" value="local"> Save username locally<br>
+			<br/>
+			<input type="radio" name="username" id ="saveSession" value="session"> Save session <br>
+			<br/>
+			<input type="radio" name="username" id="noSave" value="noSave"> Do not save username <br>
+		</form>
+		-->
 	</div>
 	<a href="register.php">Need to create an account?</a>
 	<br/>
