@@ -1,10 +1,21 @@
 body {
 	margin: 15px 15px 15px 15px;
+	background-color: #545454; /*grey*/
+	color: #7ed957; /* green */
 }
+
+/*background {
+	background-color: #7ed957;
+}*/
 
 div.nav {
 	float: right;
 	padding: 20px;
+	background-color: #7ed957;
+}
+
+a:visited{
+	color:white;
 }
 
 ul.things {
@@ -113,12 +124,13 @@ div.error {
 
 div.message {
 	display: inline-block;
-	background-color: #ccffcc;
+	background-color: #7ed957;
+	color: #000000;
 	border-radius: 6px;
 	padding: 5px 5px 5px 5px;
 	width: auto;
 }
 
 div.newattachmenttype {
-	background-color: #ccffcc;
+	background-color: #6e7598;
 }
