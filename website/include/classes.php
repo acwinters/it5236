@@ -21,7 +21,7 @@ class Application {
             error_reporting(E_ALL);
         }
     }
-    
+   
     // Writes a message to the debug message array for printing in the footer.
     public function debug($message) {
         $this->debugMessages[] = $message;
@@ -45,6 +45,74 @@ class Application {
         return $dbh;
     }
     
+	public function auditlog($context, $message, $priority = 0, $userid = NULL){
+        // Declare an errors array
+        $errors = [];
+        // If a user is logged in, get their userid
+        if ($userid == NULL) {
+            $user = $this->getSessionUser($errors, TRUE);
+            if ($user != NULL) {
+                $userid = $user["userid"];
+            }
+        }
+        $ipaddress = $_SERVER["REMOTE_ADDR"];
+        if (is_array($message)){
+            $message = implode( ",", $message);
+        }
+        $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/auditlog";
+        $data = array(
+          'context'=>$context,
+          'message'=>$message,
+          'ipaddress'=>$ipaddress,
+          'userid'=>$userid
+        );
+        $data_json = json_encode($data);
+		
+		//curl setup
+        $ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP', 'Content-Type: application/json','Content-Length: ' . strlen($data_json)));
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data_json);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		
+        $response  = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		
+        if ($response === FALSE) {
+          $errors[] = "An unexpected failure occurred contacting the web service.";
+        } else {
+          if($httpCode == 400) {
+			  
+            // JSON was double-encoded, so it needs to be double decoded
+            $errorsList = json_decode(json_decode($response))->errors;
+            foreach ($errorsList as $err) {
+              $errors[] = $err;
+            }
+            if (sizeof($errors) == 0) {
+              $errors[] = "Bad input";
+            }
+			
+          } else if($httpCode == 500) {
+            $errorsList = json_decode(json_decode($response))->errors;
+            foreach ($errorsList as $err) {
+              $errors[] = $err;
+            }
+            if (sizeof($errors) == 0) {
+              $errors[] = "Server error";
+            }
+          } else if($httpCode == 200) {
+          }
+        }
+		
+        curl_close($ch);
+        if (sizeof($errors) == 0){
+            return TRUE;
+        } else {
+            return FALSE;
+        }
+    }
+	/* OLD CODE - WORKING
     public function auditlog($context, $message, $priority = 0, $userid = NULL){
         
         // Declare an errors array
@@ -59,10 +127,8 @@ class Application {
             $user = $this->getSessionUser($errors, TRUE);
             if ($user != NULL) {
                 $userid = $user["userid"];
-            }
-            
+            }           
         }
-        
         $ipaddress = $_SERVER["REMOTE_ADDR"];
         
         if (is_array($message)){
@@ -83,7 +149,7 @@ class Application {
         $dbh = NULL;
         
     }
-    
+    */
     protected function validateUsername($username, &$errors) {
         if (empty($username)) {
             $errors[] = "Missing username";
@@ -111,7 +177,6 @@ class Application {
                 $errors[] = "Not a Georgia Southern email address";
             }
     }
-    
     
     // Registers a new user
     public function register($username, $password, $email, $registrationcode, &$errors) {
@@ -145,9 +210,12 @@ class Application {
 			);
 			$data_json = json_encode($data);
 
+			$api = '0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP';
+			
+			//curl setup
 			$ch = curl_init();
 			curl_setopt($ch, CURLOPT_URL, $url);
-			curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json','Content-Length: ' . strlen($data_json)));
+			curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json','Content-Length: ' . strlen($data_json), 'x-api-key:'. $api ));
 			curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
 			curl_setopt($ch, CURLOPT_POSTFIELDS, $data_json);
 			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -168,9 +236,7 @@ class Application {
 					if (sizeof($errors) == 0) {
 						$errors[] = "Bad input";
 					}
-
 				} else if($httpCode == 500) {
-
 					$errorsList = json_decode(json_decode($response))->errors;
 					foreach ($errorsList as $err) {
 						$errors[] = $err;
@@ -178,15 +244,11 @@ class Application {
 					if (sizeof($errors) == 0) {
 						$errors[] = "Server error";
 					}
-
 				} else if($httpCode == 200) {
-
-					// $this->sendValidationEmail($userid, $email, $errors);
-
+					$this->sendValidationEmail($userid, $email, $errors);
 				}
 
 			}
-			
 			curl_close($ch);
 
         } else {
@@ -200,7 +262,7 @@ class Application {
             return FALSE;
         }
     }
-
+	/* OLD CODE
     // Registers a new user
     public function register($username, $password, $email, $registrationcode, &$errors) {
         
@@ -337,7 +399,8 @@ class Application {
             return FALSE;
         }
     }
-    
+	//
+    */
     // Send an email to validate the address
     protected function sendValidationEmail($userid, $email, &$errors) {
         
@@ -474,7 +537,80 @@ class Application {
     }
     
     // Creates a new session in the database for the specified user
-    public function newSession($userid, &$errors, $registrationcode = NULL) {
+   
+   /* NOT WORKING..
+   public function newSession($userid, &$errors, $registrationcode = NULL) {
+        // Check for a valid userid
+        if (empty($userid)) {
+            $errors[] = "Missing userid";
+            $this->auditlog("session", "missing userid");
+        }
+        // Only try to query the data into the database if there are no validation errors
+        if (sizeof($errors) == 0) {
+            if ($registrationcode == NULL) {
+                $regs = $this->getUserRegistrations($userid, $errors);
+                $reg = $regs[0];
+                $this->auditlog("session", "logging in user with first reg code $reg");
+                $registrationcode = $regs[0];
+            }
+            // Create a new session ID
+            $sessionid = bin2hex(random_bytes(25));
+            $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/newsession";
+            $data = array(
+              'sessionid'=>$sessionid,
+              'userid'=>$userid,
+              'registrationcode'=>$registrationcode
+            );
+            $data_json = json_encode($data);
+            
+			// curl setup
+			$ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP', 'Content-Type: application/json','Content-Length: ' . strlen($data_json)));
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $data_json);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+			
+            $response  = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+			
+            if ($response === FALSE) {
+              $errors[] = "An unexpected error occurred";
+              $this->debug($stmt->errorInfo());
+              $this->auditlog("new session error", $stmt->errorInfo());
+              return NULL;
+            } else {
+              if($httpCode == 400) {
+				  
+                // JSON was double-encoded, so it needs to be double decoded
+                $errorsList = json_decode(json_decode($response))->errors;
+                foreach ($errorsList as $err) {
+                  $errors[] = $err;
+                }
+                if (sizeof($errors) == 0) {
+                  $errors[] = "Bad input";
+                }
+              } else if($httpCode == 500) {
+                $errorsList = json_decode(json_decode($response))->errors;
+                foreach ($errorsList as $err) {
+                  $errors[] = $err;
+                }
+                if (sizeof($errors) == 0) {
+                  $errors[] = "Server error";
+                }
+              } else if($httpCode == 200) {
+                // Store the session ID as a cookie in the browser
+                setcookie('sessionid', $sessionid, time()+60*60*24*30);
+                $this->auditlog("session", "new session id: $sessionid for user = $userid");
+                // Return the session ID
+                return $sessionid;
+              }
+            }
+            curl_close($ch);
+        }
+    }*/
+   
+	public function newSession($userid, &$errors, $registrationcode = NULL) {
         
         // Check for a valid userid
         if (empty($userid)) {
@@ -574,6 +710,69 @@ class Application {
     
     // Updates a single user in the database and will return the $errors array listing any errors encountered
     public function updateUserPassword($userid, $password, &$errors) {
+        // Validate the user input
+        if (empty($userid)) {
+            $errors[] = "Missing userid";
+        }
+        $this->validatePassword($password, $errors);
+        if(sizeof($errors) == 0) {
+            $passwordhash = password_hash($password, PASSWORD_DEFAULT);
+            $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/updateUserPassword";
+            $data = array(
+              'passwordhash'=>$passwordhash,
+              'userid'=>$userid
+            );
+            $data_json = json_encode($data);
+			
+			//curl setup
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP', 'Content-Type: application/json','Content-Length: ' . strlen($data_json)));
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $data_json);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            $response  = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+			
+            if ($response === FALSE) {
+              $errors[] = "An unexpected error occurred supdating the password.";
+              $this->debug($stmt->errorInfo());
+              $this->auditlog("updateUserPassword error", $stmt->errorInfo());
+              return NULL;
+            } else {
+              if($httpCode == 400) {
+                // JSON was double-encoded, so it needs to be double decoded
+                $errorsList = json_decode(json_decode($response))->errors;
+                foreach ($errorsList as $err) {
+                  $errors[] = $err;
+                }
+                if (sizeof($errors) == 0) {
+                  $errors[] = "Bad input";
+                }
+              } else if($httpCode == 500) {
+                $errorsList = json_decode(json_decode($response))->errors;
+                foreach ($errorsList as $err) {
+                  $errors[] = $err;
+                }
+                if (sizeof($errors) == 0) {
+                  $errors[] = "Server error";
+                }
+              } else if($httpCode == 200) {
+                $this->auditlog("updateUserPassword", "success");
+              }
+            }
+            curl_close($ch);
+        } else {
+            $this->auditlog("updateUserPassword validation error", $errors);
+        }
+        if (sizeof($errors) == 0){
+            return TRUE;
+        } else {
+            return FALSE;
+        }
+    }
+	
+	/*public function updateUserPassword($userid, $password, &$errors) {
         
         // Validate the user input
         if (empty($userid)) {
@@ -624,6 +823,7 @@ class Application {
             return FALSE;
         }
     }
+	*/
     
     // Removes the specified password reset entry in the database, as well as any expired ones
     // Does not retrun errors, as the user should not be informed of these problems
@@ -640,8 +840,7 @@ class Application {
         $stmt->execute();
         
         // Close the connection
-        $dbh = NULL;
-        
+        $dbh = NULL;       
     }
     
     // Retrieves an existing session from the database for the specified user
@@ -679,14 +878,10 @@ class Application {
                 // In order to prevent recursive calling of audit log function
                 if (!$suppressLog){
                     $this->auditlog("session error", $stmt->errorInfo());
-                }
-                
-            } else {
-                
-                $user = $stmt->fetch(PDO::FETCH_ASSOC);
-                
-            }
-            
+                }               
+            } else {               
+                $user = $stmt->fetch(PDO::FETCH_ASSOC);               
+            }            
             // Close the connection
             $dbh = NULL;
             
@@ -696,8 +891,63 @@ class Application {
         
     }
     
-    // Retrieves an existing session from the database for the specified user
-    public function isAdmin(&$errors, $userid) {
+    // Checks if user has admin rights
+    /* NOT WORKING
+	public function isAdmin(&$errors, $userid) {
+        // Check for a valid user ID
+        if (empty($userid)) {
+            $errors[] = "Missing userid";
+            return FALSE;
+        }
+        $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/isadmin";
+        $data = array(
+          'userid'=>$userid
+        );
+        $data_json = json_encode($data);
+		
+		//curl setup
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP', 'Content-Type: application/json','Content-Length: ' . strlen($data_json)));
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data_json);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $response  = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		
+        if ($response === FALSE) {
+          $errors[] = "An unexpected error occurred";
+          $this->debug($stmt->errorInfo());
+          $this->auditlog("isadmin error", $stmt->errorInfo());
+          return FALSE;
+        } else {
+          if($httpCode == 400) {
+            // JSON was double-encoded, so it needs to be double decoded
+            $errorsList = json_decode(json_decode($response))->errors;
+            foreach ($errorsList as $err) {
+              $errors[] = $err;
+            }
+            if (sizeof($errors) == 0) {
+              $errors[] = "Bad input";
+            }
+          } else if($httpCode == 500) {
+            $errorsList = json_decode(json_decode($response))->errors;
+            foreach ($errorsList as $err) {
+              $errors[] = $err;
+            }
+            if (sizeof($errors) == 0) {
+              $errors[] = "Server error";
+            }
+          } else if($httpCode == 200) {
+            $isadmin = json_decode($response, true)[0]['isadmin'];
+            // Return the isAdmin flag
+            return $isadmin == 1;
+          }
+        }
+        curl_close($ch);
+    }
+	*/
+	public function isAdmin(&$errors, $userid) {
         
         // Check for a valid user ID
         if (empty($userid)) {
@@ -732,10 +982,9 @@ class Application {
             
             // Return the isAdmin flag
             return $isadmin == 1;
-            
         }
     }
-    
+   
     // Logs in an existing user and will return the $errors array listing any errors encountered
     public function login($username, $password, &$errors) {
         
@@ -757,7 +1006,7 @@ class Application {
             $dbh = $this->getConnection();
             
             // Construct a SQL statement to perform the insert operation
-            $sql = "SELECT userid, passwordhash, emailvalidated FROM users " .
+            $sql = "SELECT userid, passwordhash, email, emailvalidated FROM users " .
                 "WHERE username = :username";
             
             // Run the SQL select and capture the result code
@@ -802,9 +1051,21 @@ class Application {
                     $userid = $row['userid'];
                     $this->newSession($userid, $errors);
                     $this->auditlog("login", "success: $username, $userid");
-                    
-                }
-                
+						$pageLink = (isset($_SERVER['HTTPS']) ? "https" : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]";
+						$pageLink = str_replace("register.php", "login.php", $pageLink);
+						$otp = bin2hex(random_bytes(3));
+						$to      = $row['email'];
+						$subject = 'One Time Password';
+						$message = "A request has been made to login at Jamz4u for this email address. ".
+							"If you did not make this request, please ignore this message. No other action is necessary. ".
+							"To confirm this login please enter this one time password " . $otp;
+						$headers = 'From: webmaster@russellthackston.me' . "\r\n" .
+							'Reply-To: webmaster@russellthackston.me' . "\r\n";
+						
+						mail($to, $subject, $message, $headers);
+						
+						$this->auditlog("sendValidationEmail", "Message sent to $email");
+						}			                
             }
             
             // Close the connection
@@ -822,11 +1083,66 @@ class Application {
             return FALSE;
         }
     }
+	
     
     // Logs out the current user based on session ID
-    public function logout() {
-        
+    public function logout() {        		    
         $sessionid = $_COOKIE['sessionid'];
+        // Only try to query the data into the database if there are no validation errors
+        if (!empty($sessionid)) {
+            $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/logoutuser";
+      			$data = array(
+      				'sessionid'=>$sessionid
+      			);
+      			$data_json = json_encode($data);
+				
+				//curl setup
+      			$ch = curl_init();
+      			curl_setopt($ch, CURLOPT_URL, $url);
+      			curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP', 'Content-Type: application/json','Content-Length: ' . strlen($data_json)));
+      			curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+      			curl_setopt($ch, CURLOPT_POSTFIELDS, $data_json);
+      			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+      			$response  = curl_exec($ch);
+      			$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+				
+      			if ($response === FALSE) {
+      				$errors[] = "An unexpected failure occurred contacting the web service.";
+      			} else {
+      				if($httpCode == 400) {
+      					// JSON was double-encoded, so it needs to be double decoded
+      					$errorsList = json_decode(json_decode($response))->errors;
+      					foreach ($errorsList as $err) {
+      						$errors[] = $err;
+      					}
+      					if (sizeof($errors) == 0) {
+      						$errors[] = "Bad input";
+      					}
+      				} else if($httpCode == 500) {
+      					$errorsList = json_decode(json_decode($response))->errors;
+      					foreach ($errorsList as $err) {
+      						$errors[] = $err;
+      					}
+      					if (sizeof($errors) == 0) {
+      						$errors[] = "Server error";
+      					}
+      				} else if($httpCode == 200) {
+                setcookie('sessionid', '', time()-3600);
+                $this->auditlog("logout", "successful: $sessionid");
+      				}
+      			}
+      			curl_close($ch);
+          } else {
+              $this->auditlog("logout error", $errors);
+          }
+          if (sizeof($errors) == 0){
+              return TRUE;
+          } else {
+              return FALSE;
+          }
+    }
+		/*
+        /$sessionid = $_COOKIE['sessionid'];
         
         // Only try to query the data into the database if there are no validation errors
         if (!empty($sessionid)) {
@@ -863,7 +1179,7 @@ class Application {
             
         }
         
-    }
+    } */
     
     // Checks for logged in user and redirects to login if not found with "page=protected" indicator in URL.
     public function protectPage(&$errors, $isAdmin = FALSE) {
@@ -908,7 +1224,55 @@ class Application {
     }
     
     // Get a list of things from the database and will return the $errors array listing any errors encountered
-    public function getThings(&$errors) {
+    /* NOT WORKING PLS HELP
+	public function getThings(&$errors) {
+        // Assume an empty list of things
+        $things = array();
+        // Get the user id from the session
+        $user = $this->getSessionUser($errors);
+        $registrationcode = $user["registrationcode"];
+        $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/getThings";
+        
+		//curl setup
+		$ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP'));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $response  = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		
+        if ($response === FALSE) {
+          $errors[] = "An unexpected error occurred.";
+          $this->debug($stmt->errorInfo());
+          $this->auditlog("getthings error", $stmt->errorInfo());
+        } else {
+          if($httpCode == 400) {
+            // JSON was double-encoded, so it needs to be double decoded
+            $errorsList = json_decode(json_decode($response))->errors;
+            foreach ($errorsList as $err) {
+              $errors[] = $err;
+            }
+            if (sizeof($errors) == 0) {
+              $errors[] = "Bad input";
+            }
+          } else if($httpCode == 500) {
+            $errorsList = json_decode(json_decode($response))->errors;
+            foreach ($errorsList as $err) {
+              $errors[] = $err;
+            }
+            if (sizeof($errors) == 0) {
+              $errors[] = "Server error";
+            }
+          } else if($httpCode == 200) {
+            $things = json_decode($response, true);
+          }
+        }
+        curl_close($ch);
+        // Return the list of things
+        return $things;
+    }*/
+	 
+	public function getThings(&$errors) {
         
         // Assume an empty list of things
         $things = array();
@@ -952,7 +1316,60 @@ class Application {
     }
     
     // Get a single thing from the database and will return the $errors array listing any errors encountered
-    public function getThing($thingid, &$errors) {
+/* NOT WORKING EITHER       
+	   public function getThing($thingid, &$errors) {
+        // Assume no thing exists for this thing id
+        $thing = NULL;
+        // Check for a valid thing ID
+        if (empty($thingid)){
+            $errors[] = "Missing thing ID";
+        }
+        if (sizeof($errors) == 0){
+            $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/getThing";
+			
+			//curl setup
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP'));
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            $response  = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            if ($response === FALSE) {
+              $errors[] = "An unexpected error occurred.";
+              $this->debug($stmt->errorInfo());
+              $this->auditlog("getthing error", $stmt->errorInfo());
+            } else {
+              if($httpCode == 400) {
+                // JSON was double-encoded, so it needs to be double decoded
+                $errorsList = json_decode(json_decode($response))->errors;
+                foreach ($errorsList as $err) {
+                  $errors[] = $err;
+                }
+                if (sizeof($errors) == 0) {
+                  $errors[] = "Bad input";
+                }
+              } else if($httpCode == 500) {
+                $errorsList = json_decode(json_decode($response))->errors;
+                foreach ($errorsList as $err) {
+                  $errors[] = $err;
+                }
+                if (sizeof($errors) == 0) {
+                  $errors[] = "Server error";
+                }
+              } else if($httpCode == 200) {
+                $thing = json_decode($response, true)[0];
+              }
+            }
+            curl_close($ch);
+        } else {
+            $this->auditlog("getThing validation error", $errors);
+        }
+        // Return the thing
+        return $thing;
+    }*/
+	
+	
+	public function getThing($thingid, &$errors) {
         
         // Assume no thing exists for this thing id
         $thing = NULL;
@@ -1148,6 +1565,84 @@ class Application {
     }
     
     // Adds a new thing to the database
+   /*THIS ISNT WORKING 
+    public function addThing($name, $attachment, &$errors) {
+        // Get the user id from the session
+        $user = $this->getSessionUser($errors);
+        $userid = $user["userid"];
+        $registrationcode = $user["registrationcode"];
+
+        if (empty($name)) {
+            $errors[] = "Missing thing name";
+        }
+        // Only try to insert the data into the database if there are no validation errors
+        if (sizeof($errors) == 0) {
+            $attachmentid = $this->saveAttachment($attachment, $errors);
+            // Only try to insert the data into the database if the attachment successfully saved
+            if (sizeof($errors) == 0) {
+                // Create a new ID
+                $thingid = bin2hex(random_bytes(16));
+                $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/addthing";
+                $data = array(
+                  'thingid'=>$thingid,
+                  'thingname'=>$name,
+                  'userid'=>$userid,
+                  'attachmentid'=>$attachmentid,
+                  'thingregistrationcode'=>$registrationcode
+                );
+                $data_json = json_encode($data);
+				
+				//curl setup
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $url);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP', 'Content-Type: application/json','Content-Length: ' . strlen($data_json)));
+                curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $data_json);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                $response  = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+				
+                if ($response === FALSE) {
+                  $errors[] = "An unexpected error occurred adding the thing to the database.";
+                  $this->debug($stmt->errorInfo());
+                  $this->auditlog("addthing error", $stmt->errorInfo());
+                } else {
+                  if($httpCode == 400) {
+                    // JSON was double-encoded, so it needs to be double decoded
+                    $errorsList = json_decode(json_decode($response))->errors;
+                    foreach ($errorsList as $err) {
+                      $errors[] = $err;
+                    }
+                    if (sizeof($errors) == 0) {
+                      $errors[] = "Bad input";
+                    }
+                    curl_close($ch);
+                  } else if($httpCode == 500) {
+                    $errorsList = json_decode(json_decode($response))->errors;
+                    foreach ($errorsList as $err) {
+                      $errors[] = $err;
+                    }
+                    if (sizeof($errors) == 0) {
+                      $errors[] = "Server error";
+                    }
+                    curl_close($ch);
+                  } else if($httpCode == 200) {
+                    $this->auditlog("addthing", "success: $name, id = $thingid");
+                    curl_close($ch);
+                  }
+                }
+            }
+        } else {
+            $this->auditlog("addthing validation error", $errors);
+        }
+        if (sizeof($errors) == 0){
+            return TRUE;
+        } else {
+            return FALSE;
+        }
+    }
+	*/
+	
     public function addThing($name, $attachment, &$errors) {
         
         // Get the user id from the session
@@ -1218,9 +1713,91 @@ class Application {
             return FALSE;
         }
     }
+	
     
-    // Adds a new comment to the database
+	// Adds a new comment to the database
     public function addComment($text, $thingid, $attachment, &$errors) {
+        // Get the user id from the session
+        $user = $this->getSessionUser($errors);
+        $userid = $user["userid"];
+        // Validate the user input
+        if (empty($userid)) {
+            $errors[] = "Missing user ID. Not logged in?";
+        }
+        if (empty($thingid)) {
+            $errors[] = "Missing thing ID";
+        }
+        if (empty($text)) {
+            $errors[] = "Missing comment text";
+        }
+        // Only try to insert the data into the database if there are no validation errors
+        if (sizeof($errors) == 0) {
+            $attachmentid = $this->saveAttachment($attachment, $errors);
+            // Only try to insert the data into the database if the attachment successfully saved
+            if (sizeof($errors) == 0) {
+                // Create a new ID
+                $commentid = bin2hex(random_bytes(16));
+                $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/addComment";
+                $data = array(
+                  'commentid'=>$commentid,
+                  'commenttext'=>$text,
+                  'commentuserid'=>$userid,
+                  'commentthingid'=>$thingid,
+                  'commentattachmentid'=>$attachmentid
+                );
+                $data_json = json_encode($data);
+				
+				//curl setup
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $url);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP', 'Content-Type: application/json','Content-Length: ' . strlen($data_json)));
+                curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $data_json);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                $response  = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                if ($response === FALSE) {
+                  $errors[] = "An unexpected error occurred saving the comment to the database.";
+                  $this->debug($stmt->errorInfo());
+                  $this->auditlog("addcomment error", $stmt->errorInfo());
+                } else {
+                  if($httpCode == 400) {
+                    // JSON was double-encoded, so it needs to be double decoded
+                    $errorsList = json_decode(json_decode($response))->errors;
+                    foreach ($errorsList as $err) {
+                      $errors[] = $err;
+                    }
+                    if (sizeof($errors) == 0) {
+                      $errors[] = "Bad input";
+                    }
+                    curl_close($ch);
+                  } else if($httpCode == 500) {
+                    $errorsList = json_decode(json_decode($response))->errors;
+                    foreach ($errorsList as $err) {
+                      $errors[] = $err;
+                    }
+                    if (sizeof($errors) == 0) {
+                      $errors[] = "Server error";
+                    }
+                    curl_close($ch);
+                  } else if($httpCode == 200) {
+                    $this->auditlog("addcomment", "success: $commentid");
+                    curl_close($ch);
+                  }
+                }
+        } else {
+            $this->auditlog("addcomment validation error", $errors);
+        }
+        }
+        // Return TRUE if there are no errors, otherwise return FALSE
+        if (sizeof($errors) == 0){
+            return TRUE;
+        } else {
+            return FALSE;
+        }
+    }
+   /* OLD CODE
+		public function addComment($text, $thingid, $attachment, &$errors) {
         
         // Get the user id from the session
         $user = $this->getSessionUser($errors);
@@ -1290,9 +1867,56 @@ class Application {
             return FALSE;
         }
     }
-    
+    */
     // Get a list of users from the database and will return the $errors array listing any errors encountered
     public function getUsers(&$errors) {
+        // Assume an empty list of topics
+        $users = array();
+        $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/getUsers";
+		
+		//curl setup
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP'));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $response  = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($response === FALSE) {
+          $errors[] = "An unexpected error occurred getting the user list.";
+          $this->debug($stmt->errorInfo());
+          $this->auditlog("getusers error", $stmt->errorInfo());
+        } else {
+          if($httpCode == 400) {
+            // JSON was double-encoded, so it needs to be double decoded
+            $errorsList = json_decode(json_decode($response))->errors;
+            foreach ($errorsList as $err) {
+              $errors[] = $err;
+            }
+            if (sizeof($errors) == 0) {
+              $errors[] = "Bad input";
+            }
+            curl_close($ch);
+          } else if($httpCode == 500) {
+            $errorsList = json_decode(json_decode($response))->errors;
+            foreach ($errorsList as $err) {
+              $errors[] = $err;
+            }
+            if (sizeof($errors) == 0) {
+              $errors[] = "Server error";
+            }
+            curl_close($ch);
+          } else if($httpCode == 200) {
+            $users = json_decode($response, true);
+            $this->auditlog("getusers", "success");
+            curl_close($ch);
+            return $users;
+          }
+        }
+        // Return the list of users
+        return $users;
+    }
+	/* OLD CODE
+	public function getUsers(&$errors) {
         
         // Assume an empty list of topics
         $users = array();
@@ -1330,9 +1954,78 @@ class Application {
         return $users;
         
     }
+	*/
     
     // Gets a single user from database and will return the $errors array listing any errors encountered
-    public function getUser($userid, &$errors) {
+    /* THIS ISNT WORKING
+		public function getUser($userid, &$errors) {
+        // Assume no user exists for this user id
+        $user = NULL;
+        if(sizeof($errors)== 0) {
+            // Get the user id from the session
+            $user = $this->getSessionUser($errors);
+            $loggedinuserid = $user["userid"];
+            $isadmin = FALSE;
+            // Check to see if the user really is logged in and really is an admin
+            if ($loggedinuserid != NULL) {
+                $isadmin = $this->isAdmin($errors, $loggedinuserid);
+            }
+            if (!$isadmin && $loggedinuserid != $userid) {
+                $errors[] = "Cannot view other user";
+                $this->auditlog("getuser", "attempt to view other user: $loggedinuserid");
+            } else {
+                if (sizeof($errors) == 0) {
+                  $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/getUser";
+				  
+				  //curl setup
+                  $ch = curl_init();
+                  curl_setopt($ch, CURLOPT_URL, $url);
+                  curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP'));
+                  curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                  $response  = curl_exec($ch);
+                  $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                  if ($response === FALSE) {
+                    $errors[] = "An unexpected error occurred retrieving the specified user.";
+                    $this->debug($stmt->errorInfo());
+                    $this->auditlog("getuser error", $stmt->errorInfo());
+                  } else {
+                    if($httpCode == 400) {
+                      // JSON was double-encoded, so it needs to be double decoded
+                      $errorsList = json_decode(json_decode($response))->errors;
+                      foreach ($errorsList as $err) {
+                        $errors[] = $err;
+                      }
+                      if (sizeof($errors) == 0) {
+                        $errors[] = "Bad input";
+                      }
+                      curl_close($ch);
+                    } else if($httpCode == 500) {
+                      $errorsList = json_decode(json_decode($response))->errors;
+                      foreach ($errorsList as $err) {
+                        $errors[] = $err;
+                      }
+                      if (sizeof($errors) == 0) {
+                        $errors[] = "Server error";
+                      }
+                      curl_close($ch);
+                    } else if($httpCode == 200) {
+                      $user = json_decode($response, true)[0];
+                      $this->auditlog("getusers", "success");
+                      curl_close($ch);
+                      return $user;
+                    }
+                  }
+                } else {
+                    $this->auditlog("getuser validation error", $errors);
+                }
+            }
+        } else {
+            $this->auditlog("getuser validation error", $errors);
+        }
+        // Return user if there are no errors, otherwise return NULL
+        return $user;
+    }*/ 
+	public function getUser($userid, &$errors) {
         
         // Assume no user exists for this user id
         $user = NULL;
@@ -1412,9 +2105,106 @@ class Application {
         return $user;
     }
     
-    
     // Updates a single user in the database and will return the $errors array listing any errors encountered
     public function updateUser($userid, $username, $email, $password, $isadminDB, &$errors) {
+        // Assume no user exists for this user id
+        $user = NULL;
+        // Validate the user input
+        if (empty($userid)) {
+            $errors[] = "Missing userid";
+        }
+        if(sizeof($errors) == 0) {
+            // Get the user id from the session
+            $user = $this->getSessionUser($errors);
+            $loggedinuserid = $user["userid"];
+            $isadmin = FALSE;
+            // Check to see if the user really is logged in and really is an admin
+            if ($loggedinuserid != NULL) {
+                $isadmin = $this->isAdmin($errors, $loggedinuserid);
+            }
+            if (!$isadmin && $loggedinuserid != $userid) {
+                $errors[] = "Cannot edit other user";
+                $this->auditlog("getuser", "attempt to update other user: $loggedinuserid");
+            } else {
+                // Validate the user input
+                if (empty($userid)) {
+                    $errors[] = "Missing userid";
+                }
+                if (empty($username)) {
+                    $errors[] = "Missing username";
+                }
+                if (empty($email)) {
+                    $errors[] = "Missing email;";
+                }
+                // Only try to update the data into the database if there are no validation errors
+                if (sizeof($errors) == 0) {
+                    $passwordhash = password_hash($password, PASSWORD_DEFAULT);
+                    $adminFlag = ($isadminDB ? "1" : "0");
+                    $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/updateUser";
+                    $data = array(
+                      'username'=>$username,
+                      'email'=>$email,
+                      'admin'=>$adminFlag,
+                      'password'=>$passwordhash,
+                      'userid'=>$userid
+                    );
+                    $data_json = json_encode($data);
+					
+					//curl setup
+                    $ch = curl_init();
+                    curl_setopt($ch, CURLOPT_URL, $url);
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP', 'Content-Type: application/json','Content-Length: ' . strlen($data_json)));
+                    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+                    curl_setopt($ch, CURLOPT_POSTFIELDS, $data_json);
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    $response  = curl_exec($ch);
+                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    if ($response === FALSE) {
+                      $errors[] = "An unexpected error occurred saving the user profile. ";
+                      $this->debug($stmt->errorInfo());
+                      $this->auditlog("updateUser error", $stmt->errorInfo());
+                    } else {
+                      if($httpCode == 400) {
+                        // JSON was double-encoded, so it needs to be double decoded
+                        $errorsList = json_decode(json_decode($response))->errors;
+                        foreach ($errorsList as $err) {
+                          $errors[] = $err;
+                        }
+                        if (sizeof($errors) == 0) {
+                          $errors[] = "Bad input";
+                        }
+                        curl_close($ch);
+                      } else if($httpCode == 500) {
+                        $errorsList = json_decode(json_decode($response))->errors;
+                        foreach ($errorsList as $err) {
+                          $errors[] = $err;
+                        }
+                        if (sizeof($errors) == 0) {
+                          $errors[] = "Server error";
+                        }
+                        curl_close($ch);
+                      } else if($httpCode == 200) {
+                        $this->auditlog("updateUser", "success");
+                        curl_close($ch);
+                      }
+                    }
+                } else {
+                    $this->auditlog("updateUser validation error", $errors);
+                }
+            }
+        } else {
+            $this->auditlog("updateUser validation error", $errors);
+        }
+        // Return TRUE if there are no errors, otherwise return FALSE
+        if (sizeof($errors) == 0){
+            return TRUE;
+        } else {
+            return FALSE;
+        }
+    }
+	
+	/* OLD CODE
+	public function updateUser($userid, $username, $email, $password, $isadminDB, &$errors) {
         
         // Assume no user exists for this user id
         $user = NULL;
@@ -1512,7 +2302,7 @@ class Application {
             return FALSE;
         }
     }
-    
+    */
     // Validates a provided username or email address and sends a password reset email
     public function passwordReset($usernameOrEmail, &$errors) {
         
@@ -1649,8 +2439,57 @@ class Application {
         return file_get_contents($name);
     }
     
-    // Get a list of users from the database and will return the $errors array listing any errors encountered
+    // Get a list of attachment types in the database
+	
     public function getAttachmentTypes(&$errors) {
+        // Assume an empty list of topics
+        $types = array();
+        $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/getAttachmentType";
+		
+		//curl setup
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP'));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $response  = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($response === FALSE) {
+          $errors[] = "An unexpected error occurred getting the attachment types list.";
+          $this->debug($stmt->errorInfo());
+          $this->auditlog("getattachmenttypes error", $stmt->errorInfo());
+        } else {
+          if($httpCode == 400) {
+            // JSON was double-encoded, so it needs to be double decoded
+            $errorsList = json_decode(json_decode($response))->errors;
+            foreach ($errorsList as $err) {
+              $errors[] = $err;
+            }
+            if (sizeof($errors) == 0) {
+              $errors[] = "Bad input";
+            }
+            curl_close($ch);
+          } else if($httpCode == 500) {
+            $errorsList = json_decode(json_decode($response))->errors;
+            foreach ($errorsList as $err) {
+              $errors[] = $err;
+            }
+            if (sizeof($errors) == 0) {
+              $errors[] = "Server error";
+            }
+            curl_close($ch);
+          } else if($httpCode == 200) {
+            $types = json_decode($response, true);
+            $this->auditlog("getattachmenttypes", "success");
+            curl_close($ch);
+            return $types;
+          }
+        }
+        // Return the list of users
+        return $types;
+    }
+
+	/* OLD CODE NEW CODE WORKING
+	public function getAttachmentTypes(&$errors) {
         
         // Assume an empty list of topics
         $types = array();
@@ -1688,9 +2527,80 @@ class Application {
         return $types;
         
     }
+    */
+	
+    // Creates a new attachment type for the site
     
-    // Creates a new session in the database for the specified user
-    public function newAttachmentType($name, $extension, &$errors) {
+	/* NOT WORKING HELP ME
+	public function newAttachmentType($name, $extension, &$errors) {
+        $attachmenttypeid = NULL;
+        // Check for a valid name
+        if (empty($name)) {
+            $errors[] = "Missing name";
+        }
+        // Check for a valid extension
+        if (empty($extension)) {
+            $errors[] = "Missing extension";
+        }
+
+        // Only try to query the data into the database if there are no validation errors
+        if (sizeof($errors) == 0) {
+            $attachmenttypeid = bin2hex(random_bytes(25));
+            $url = "https://477pgy374d.execute-api.us-east-1.amazonaws.com/default/newAttachmentType";
+            $data = array(
+              'attachmenttypeid '=>$attachmenttypeid ,
+              'name'=>$name,
+              'extension'=>$extension
+            );
+            $data_json = json_encode($data);
+			
+			//curl setup
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array('x-api-key: 0ql1DSkxoB9gz6dnJbTmB2MM3nSI5dV72VP5dlLP', 'Content-Type: application/json','Content-Length: ' . strlen($data_json)));
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $data_json);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            $response  = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            if ($response === FALSE) {
+              $errors[] = "An unexpected error occurred";
+              $this->debug($stmt->errorInfo());
+              $this->auditlog("newAttachmentType error", $stmt->errorInfo());
+              return NULL;
+            } else {
+              if($httpCode == 400) {
+                // JSON was double-encoded, so it needs to be double decoded
+                $errorsList = json_decode(json_decode($response))->errors;
+                foreach ($errorsList as $err) {
+                  $errors[] = $err;
+                }
+                if (sizeof($errors) == 0) {
+                  $errors[] = "Bad input";
+                }
+                curl_close($ch);
+              } else if($httpCode == 500) {
+                $errorsList = json_decode(json_decode($response))->errors;
+                foreach ($errorsList as $err) {
+                  $errors[] = $err;
+                }
+                if (sizeof($errors) == 0) {
+                  $errors[] = "Server error";
+                }
+                curl_close($ch);
+              } else if($httpCode == 200) {
+                $this->auditlog("newAttachmentType error", $errors);
+                curl_close($ch);
+                return $attachmenttypeid;
+              }
+            }
+        } else {
+            $this->auditlog("newAttachmentType error", $errors);
+            return NULL;
+        }
+        return $attachmenttypeid;
+    }*/
+	public function newAttachmentType($name, $extension, &$errors) {
         
         $attachmenttypeid = NULL;
         
