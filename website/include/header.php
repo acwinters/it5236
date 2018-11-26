@@ -49,4 +49,4 @@
 
 		<?php } ?>
 	</div>
-	<h1>IT 5236</h1>
+	<img src="http://18.206.13.76/it5236/website/css/images/jamz4u3.png" alt="Logo" style="width:250px; height:250px;">
